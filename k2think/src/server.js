@@ -2,12 +2,16 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const AuthManager = require('./auth/auth_manager');
+const GPUMonitor = require('./gpu-monitor');
 
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_BASE = process.env.K2THINK_API_BASE || 'https://www.k2think.ai';
+
+// Initialize GPU Monitor for AIDP Decentralized Compute
+const gpuMonitor = new GPUMonitor('gpu-compute.log');
 
 // Initialize auth manager with account rotation support
 // It will automatically look for accounts.json or use credentials from .env
@@ -19,10 +23,13 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Chat completion endpoint - mirrors OpenAI's API
+// Chat completion endpoint - mirrors OpenAI's API with GPU monitoring
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { model, messages, temperature = 1, max_tokens, stream = false } = req.body;
+    
+    // Log GPU status before processing
+    gpuMonitor.logComputeStatus('Chat Completion');
     
     const k2thinkPayload = {
       stream: stream,
@@ -43,6 +50,8 @@ app.post('/v1/chat/completions', async (req, res) => {
       }
     );
 
+    const tokens = response.data.usage?.total_tokens || 0;
+    gpuMonitor.logComputeStatus(`Chat Completion Done (${tokens} tokens)`);
     res.status(200).json(response.data);
   } catch (error) {
     const status = error.response?.status || 500;
@@ -91,15 +100,30 @@ app.get('/v1/models', async (req, res) => {
   }
 });
 
-// Health check
+// Health check with GPU info
 app.get('/', (req, res) => {
+  const gpuInfo = gpuMonitor.getSummary();
   res.json({
     status: 'OK',
-    service: 'K2Think AI API Proxy with Account Rotation',
-    version: '1.1.0',
+    service: 'Custom AI Agent Wrapper - Decentralized Compute',
+    version: '2.0.0',
     timestamp: new Date().toISOString(),
-    accounts_available: authManager.pool.accounts.length
+    accounts_available: authManager.pool.accounts.length,
+    gpu: gpuInfo
   });
+});
+
+// GPU status endpoint
+app.get('/v1/gpu/status', (req, res) => {
+  const gpuInfo = gpuMonitor.getSummary();
+  res.json(gpuInfo);
+});
+
+// GPU logs endpoint
+app.get('/v1/gpu/logs', (req, res) => {
+  const logs = gpuMonitor.getLogContent();
+  res.header('Content-Type', 'text/plain');
+  res.send(logs);
 });
 
 app.use((err, req, res, next) => {
@@ -108,6 +132,21 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`K2Think AI API Proxy (v1.1.0) is running on port ${PORT}`);
-  console.log(`Account rotation pool size: ${authManager.pool.accounts.length}`);
+  console.log('');
+  console.log('╔════════════════════════════════════════════════════════════╗');
+  console.log('║   Custom AI Agent Wrapper - Decentralized Compute          ║');
+  console.log('║   K2Think AI API Proxy v2.0.0 (AIDP GPU Optimized)        ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
+  console.log('');
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📊 Accounts available: ${authManager.pool.accounts.length}`);
+  
+  const gpuInfo = gpuMonitor.getSummary();
+  if (gpuInfo.status === 'available') {
+    console.log(`🎮 GPU: ${gpuInfo.gpu}`);
+    console.log(`💾 Memory: ${gpuInfo.memory}`);
+  } else {
+    console.log('⚠️  GPU not available - CPU mode');
+  }
+  console.log('');
 });
